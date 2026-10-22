@@ -18,17 +18,51 @@ Potree.loadPointCloud(cloud,'E57',e=>{viewer.scene.addPointCloud(e.pointcloud);v
 
 const style=document.createElement('style');
 style.textContent='#bubble-panel{position:fixed;top:12px;right:12px;left:auto;bottom:auto;width:220px;max-width:calc(100vw - 24px);box-sizing:border-box;z-index:1000;background:#15202bf0;color:white;padding:10px;border-radius:8px;max-height:65vh;overflow:auto;font:14px Arial;box-shadow:0 3px 16px #0006}#bubble-panel .bubble-station{display:block;width:100%;margin:5px 0;padding:7px;cursor:pointer;text-align:left}#bubble-panel .bubble-toggle{float:right;padding:2px 7px;cursor:pointer}#bubble-panel.collapsed .bubble-content{display:none}#bubble-overlay{display:none;position:fixed;inset:0;background:#000;z-index:2000}#bubble-overlay canvas{display:block;width:100%;height:100%}#bubble-close{position:absolute;right:20px;top:20px;z-index:3;padding:10px;cursor:pointer}#bubble-measure{position:absolute;left:20px;top:20px;z-index:3;padding:10px;cursor:pointer}#bubble-measure-note{position:absolute;left:20px;top:62px;z-index:3;background:#18212ddd;color:#fff;padding:8px;max-width:340px;font:13px Arial}';
-document.head.appendChild(style);
+style.textContent+='#bubble-measure-menu{position:absolute;left:20px;top:65px;z-index:5;background:#14202bef;color:white;width:255px;padding:12px;border-radius:8px;font:14px Arial}#bubble-measure-menu[hidden]{display:none}#bubble-measure-buttons button{display:block;width:100%;padding:9px;margin:6px 0;text-align:left;cursor:pointer}#bubble-measure-menu small{display:block;line-height:1.4;color:#cbd5e1;margin-top:8px}#bubble-measure-info{position:fixed;left:12px;bottom:16px;z-index:1001;background:#14202bef;color:white;padding:10px;border-radius:6px;font:14px Arial}#bubble-measure-info[hidden]{display:none}';document.head.appendChild(style);
 const panel=document.createElement('div');panel.id='bubble-panel';document.body.appendChild(panel);
 const bubbleHeader=document.createElement('div');bubbleHeader.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px';
 const bubbleTitle=document.createElement('strong');bubbleTitle.textContent='BubbleViews · carregando';bubbleHeader.appendChild(bubbleTitle);
 const bubbleToggle=document.createElement('button');bubbleToggle.className='bubble-toggle';bubbleToggle.textContent='−';bubbleToggle.title='Minimizar BubbleViews';bubbleToggle.onclick=()=>{const collapsed=panel.classList.toggle('collapsed');bubbleToggle.textContent=collapsed?'+':'−';bubbleToggle.title=collapsed?'Expandir BubbleViews':'Minimizar BubbleViews';};bubbleHeader.appendChild(bubbleToggle);panel.appendChild(bubbleHeader);
 const bubbleContent=document.createElement('div');bubbleContent.className='bubble-content';panel.appendChild(bubbleContent);
-const overlay=document.createElement('div');overlay.id='bubble-overlay';overlay.innerHTML='<button id="bubble-close">Voltar à nuvem</button><button id="bubble-measure">📏 Medir distância (3D)</button><div id="bubble-measure-note">Medição precisa: selecione dois pontos na nuvem 3D. Medir diretamente sobre os pixels da foto ainda requer associação de profundidade.</div>';document.body.appendChild(overlay);
+const overlay=document.createElement('div');overlay.id='bubble-overlay';overlay.innerHTML='<button id="bubble-close">Voltar à nuvem</button><button id="bubble-measure">📏 Ferramentas de medida</button><div id="bubble-measure-menu" hidden><strong>Ferramentas de medida</strong><div id="bubble-measure-buttons"></div><small>As medidas usam pontos reais da nuvem 3D. Ao escolher uma ferramenta, a panorâmica é fechada para selecionar os pontos na nuvem. Medição diretamente na fotografia está em desenvolvimento.</small></div>';document.body.appendChild(overlay);
 let panoRenderer,panoScene,panoCamera,panoMesh,dragging=false,lastX=0,lastY=0,longitude=0,latitude=0;
-function closePanorama(){overlay.style.display='none';if(panoRenderer){panoRenderer.dispose();panoRenderer.domElement.remove();panoRenderer=null;}if(panoMesh){panoMesh.geometry.dispose();if(panoMesh.material.map)panoMesh.material.map.dispose();panoMesh.material.dispose();panoMesh=null;}}
+function closePanorama(){overlay.style.display='none';document.getElementById('bubble-measure-menu').hidden=true;if(panoRenderer){panoRenderer.dispose();panoRenderer.domElement.remove();panoRenderer=null;}if(panoMesh){panoMesh.geometry.dispose();if(panoMesh.material.map)panoMesh.material.map.dispose();panoMesh.material.dispose();panoMesh=null;}}
 document.getElementById('bubble-close').onclick=closePanorama;
-document.getElementById('bubble-measure').onclick=()=>{closePanorama();try{if(!viewer.measuringTool)throw Error('Ferramenta de medição não carregada');viewer.measuringTool.startInsertion({showDistances:true,showArea:false,closed:false,maxMarkers:2,name:'Distância'});}catch(err){console.error(err);alert('Não foi possível iniciar a medição: '+err.message);}};
+const measureMenu=document.getElementById('bubble-measure-menu');
+document.getElementById('bubble-measure').onclick=()=>{measureMenu.hidden=!measureMenu.hidden;};
+const measureModes=[
+ {label:'Distância 3D',args:{showDistances:true,maxMarkers:2,name:'Distância 3D'}},
+ {label:'Horizontal e vertical',args:{showDistances:true,maxMarkers:2,name:'Horizontal / Vertical'},components:true},
+ {label:'Ângulo',args:{showDistances:false,showAngles:true,maxMarkers:3,name:'Ângulo'}},
+ {label:'Área',args:{showDistances:false,showArea:true,closed:true,maxMarkers:Infinity,name:'Área'}},
+ {label:'Altura',args:{showDistances:false,showHeight:true,maxMarkers:2,name:'Altura'}},
+ {label:'Coordenadas XYZ',args:{showDistances:false,showCoordinates:true,maxMarkers:1,name:'Coordenadas'}}
+];
+let measureInfo=document.createElement('div');measureInfo.id='bubble-measure-info';measureInfo.hidden=true;document.body.appendChild(measureInfo);
+function formatMetric(value){return value.toLocaleString('pt-BR',{maximumFractionDigits:3})+' m';}
+function beginMeasure(mode){
+ try{
+  if(!viewer.measuringTool)throw Error('Ferramenta Potree indisponível');
+  closePanorama();
+  const measure=viewer.measuringTool.startInsertion(Object.assign({closed:false,showArea:false,showAngles:false,showHeight:false,showCoordinates:false,showDistances:false},mode.args));
+  measureInfo.hidden=false;
+  measureInfo.textContent='Selecione pontos na nuvem: '+mode.label+'. Clique direito para finalizar.';
+  if(mode.components){
+   const update=()=>{
+    if(measure.points.length<2)return;
+    const a=measure.points[0].position,b=measure.points[1].position;
+    if(!a||!b)return;
+    const dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z;
+    measureInfo.textContent='Horizontal: '+formatMetric(Math.hypot(dx,dy))+' | Vertical (ΔZ): '+formatMetric(Math.abs(dz))+' | 3D: '+formatMetric(Math.hypot(dx,dy,dz));
+   };
+   measure.addEventListener('marker_added',update);measure.addEventListener('marker_moved',update);measure.addEventListener('marker_dropped',update);
+  }
+ }catch(err){console.error(err);alert('Falha na ferramenta de medida: '+err.message);}
+}
+for(const mode of measureModes){
+ const button=document.createElement('button');button.textContent=mode.label;button.onclick=()=>beginMeasure(mode);
+ document.getElementById('bubble-measure-buttons').appendChild(button);
+}
 function renderPano(){if(!panoRenderer)return;longitude=Math.max(-1e6,Math.min(1e6,longitude));latitude=Math.max(-85,Math.min(85,latitude));const phi=((90-latitude)*Math.PI/180),theta=(longitude*Math.PI/180);panoCamera.lookAt(new THREE.Vector3(Math.sin(phi)*Math.cos(theta),Math.cos(phi),Math.sin(phi)*Math.sin(theta)));panoRenderer.render(panoScene,panoCamera);}
 function openPanorama(station){
  closePanorama();overlay.style.display='block';

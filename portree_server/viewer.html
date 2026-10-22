@@ -33,16 +33,16 @@ document.getElementById('bubble-close').onclick=closePanorama;
 document.getElementById('bubble-measure').onclick=()=>{measureMenu.hidden=!measureMenu.hidden;};
 document.getElementById('bubble-clear').onclick=clearAnnotations;
 const measureModes=[
- {label:'Ângulo entre direções',key:'angle',count:2},
- {label:'Marcar pontos',key:'point',count:Infinity},
- {label:'Distância 3D',key:'distance',count:2},
- {label:'Horizontal / vertical',key:'components',count:2},
- {label:'Área',key:'area',count:3},
- {label:'Coordenadas XYZ',key:'coordinates',count:1}
+ {label:'📏 Medir distância na BubbleView',key:'distance',count:2},
+ {label:'↔ Horizontal / vertical',key:'components',count:2},
+ {label:'∠ Ângulo entre direções',key:'angle',count:2},
+ {label:'▱ Área',key:'area',count:3},
+ {label:'⌖ Coordenadas XYZ',key:'coordinates',count:1},
+ {label:'✚ Marcar pontos',key:'point',count:Infinity}
 ];
 for(const mode of measureModes){
  const button=document.createElement('button');button.className='np-button np-tool';button.textContent=mode.label;
- button.onclick=()=>{clearAnnotations();activeMode=mode;document.querySelectorAll('.np-tool').forEach(b=>b.classList.remove('np-active'));button.classList.add('np-active');document.getElementById('bubble-status').textContent=mode.key==='angle'?'Clique em duas direções na imagem para medir o ângulo visual.':'Clique na imagem para marcar. Distâncias e coordenadas reais exigem profundidade 3D, ainda não disponível nesta versão.';};
+ button.onclick=()=>{clearAnnotations();activeMode=mode;document.querySelectorAll('.np-tool').forEach(b=>b.classList.remove('np-active'));button.classList.add('np-active');document.getElementById('bubble-status').textContent=mode.key==='angle'?'Clique em duas direções na foto para medir o ângulo visual.':'Clique diretamente na fotografia 360°. A panorâmica permanecerá aberta. A distância em metros depende da associação à profundidade 3D, ainda em desenvolvimento.';measureMenu.hidden=true;};
  document.getElementById('bubble-measure-buttons').appendChild(button);
 }
 function rayFromScreen(x,y){
@@ -59,7 +59,8 @@ function addAnnotation(x,y){
  const status=document.getElementById('bubble-status');
  if(activeMode.key==='angle'&&measurePoints.length===2){const deg=measurePoints[0].angleTo(measurePoints[1])*180/Math.PI;status.textContent='Ângulo visual: '+deg.toFixed(2)+'°. Não é um ângulo entre superfícies 3D.';}
  else if(activeMode.key==='point')status.textContent=measurePoints.length+' ponto(s) marcados. Sem profundidade associada.';
- else status.textContent=measurePoints.length+' ponto(s) selecionados. Medida métrica indisponível sem profundidade 3D validada.';
+ else if(activeMode.key==='distance'&&measurePoints.length===2){const angle=measurePoints[0].angleTo(measurePoints[1])*180/Math.PI;status.textContent='Dois pontos marcados na BubbleView. Separação angular: '+angle.toFixed(2)+'°. Distância em metros pendente da profundidade 3D.';measureMenu.hidden=false;}
+ else status.textContent=measurePoints.length+' ponto(s) selecionados na BubbleView. Distância em metros indisponível sem profundidade 3D validada.';
 }
 function updateAnnotations(){
  if(!panoRenderer)return;

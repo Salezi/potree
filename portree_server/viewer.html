@@ -25,10 +25,10 @@ const bubbleTitle=document.createElement('strong');bubbleTitle.textContent='Bubb
 const bubbleToggle=document.createElement('button');bubbleToggle.className='bubble-toggle';bubbleToggle.textContent='−';bubbleToggle.title='Minimizar BubbleViews';bubbleToggle.onclick=()=>{const collapsed=panel.classList.toggle('collapsed');bubbleToggle.textContent=collapsed?'+':'−';bubbleToggle.title=collapsed?'Expandir BubbleViews':'Minimizar BubbleViews';};bubbleHeader.appendChild(bubbleToggle);panel.appendChild(bubbleHeader);
 const bubbleContent=document.createElement('div');bubbleContent.className='bubble-content';panel.appendChild(bubbleContent);
 const overlay=document.createElement('div');overlay.id='bubble-overlay';overlay.innerHTML='<div class="np-brand"><span class="np-logo">NP</span><span>PORTREE <b>NP</b><small>INSPEÇÃO PANORÂMICA</small></span></div><div class="np-top"><button id="bubble-measure" class="np-button">Ferramentas de medida</button><button id="bubble-close" class="np-button">Voltar à nuvem</button></div><div id="bubble-measure-menu" hidden><div class="np-menu-title">Ferramentas de medida</div><div id="bubble-measure-buttons"></div><div id="bubble-status" role="status">Escolha uma ferramenta para começar.</div><button id="bubble-clear" class="np-button">Limpar marcações</button></div><div id="bubble-annotations"></div>';document.body.appendChild(overlay);
-let panoRenderer,panoScene,panoCamera,panoMesh,dragging=false,lastX=0,lastY=0,longitude=0,latitude=0,activeMode=null,measurePoints=[],measureDots=[],measureLines=[],pointerStart=null;
+let panoRenderer,panoScene,panoCamera,panoMesh,dragging=false,lastX=0,lastY=0,longitude=0,latitude=0,activeMode=null,measurePoints=[],measureDots=[],measureLines=[],pointerStart=null,currentStation=null,measureXYZ=[];
 const measureMenu=document.getElementById('bubble-measure-menu'),annotations=document.getElementById('bubble-annotations');
-function clearAnnotations(){measurePoints=[];annotations.replaceChildren();measureDots=[];measureLines=[];document.getElementById('bubble-status').textContent='Marcações removidas.';}
-function closePanorama(){overlay.style.display='none';measureMenu.hidden=true;activeMode=null;clearAnnotations();if(panoRenderer){panoRenderer.dispose();panoRenderer.domElement.remove();panoRenderer=null;}if(panoMesh){panoMesh.geometry.dispose();if(panoMesh.material.map)panoMesh.material.map.dispose();panoMesh.material.dispose();panoMesh=null;}}
+function clearAnnotations(){measureXYZ=[];measurePoints=[];annotations.replaceChildren();measureDots=[];measureLines=[];document.getElementById('bubble-status').textContent='Marcações removidas.';}
+function closePanorama(){overlay.style.display='none';measureMenu.hidden=true;activeMode=null;currentStation=null;clearAnnotations();if(panoRenderer){panoRenderer.dispose();panoRenderer.domElement.remove();panoRenderer=null;}if(panoMesh){panoMesh.geometry.dispose();if(panoMesh.material.map)panoMesh.material.map.dispose();panoMesh.material.dispose();panoMesh=null;}}
 document.getElementById('bubble-close').onclick=closePanorama;
 document.getElementById('bubble-measure').onclick=()=>{measureMenu.hidden=!measureMenu.hidden;};
 document.getElementById('bubble-clear').onclick=clearAnnotations;
@@ -50,13 +50,38 @@ function rayFromScreen(x,y){
  const nx=(x-rect.left)/rect.width*2-1,ny=-(y-rect.top)/rect.height*2+1;
  panoCamera.updateMatrixWorld();return new THREE.Vector3(nx,ny,0.5).unproject(panoCamera).sub(panoCamera.position).normalize();
 }
-function addAnnotation(x,y){
+async function addAnnotation(x,y){
  if(!activeMode||!panoRenderer)return;
  if(measurePoints.length>=activeMode.count)clearAnnotations();
  const ray=rayFromScreen(x,y);measurePoints.push(ray);
  const dot=document.createElement('div');dot.className='np-dot';dot.textContent=measurePoints.length;annotations.appendChild(dot);measureDots.push(dot);
  updateAnnotations();
  const status=document.getElementById('bubble-status');
+ if(activeMode.key!=='angle'&&activeMode.key!=='point'&&currentStation){
+  const selection=activeMode;
+  const index=measurePoints.length-1;
+  status.textContent='Consultando profundidade 3D...';
+  try{
+   const response=await fetch('/api/depth/'+token,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({station_id:currentStation.id,direction:[ray.x,ray.y,ray.z]})});
+   if(!response.ok)throw Error('Consulta de profundidade falhou ('+response.status+')');
+   const result=await response.json();
+   if(activeMode!==selection||measurePoints[index]!==ray)return;
+   if(result.status!=='provisional'){
+    status.textContent=result.message||'Profundidade indisponível para este clique.';
+    return;
+   }
+   measureXYZ[index]=result.xyz;
+   if(selection.key==='coordinates'){
+    status.textContent='XYZ provisório (unidade do E57): '+result.xyz.map(v=>v.toFixed(3)).join(', ')+' · alinhamento ainda não calibrado';
+   }else if(measureXYZ[0]&&measureXYZ[1]){
+    const a=measureXYZ[0],b=measureXYZ[1],dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2];
+    status.textContent='RESULTADO PROVISÓRIO, NÃO VALIDADO · 3D: '+Math.hypot(dx,dy,dz).toFixed(3)+' | horizontal XY: '+Math.hypot(dx,dy).toFixed(3)+' | ΔZ: '+Math.abs(dz).toFixed(3)+' (unidade do E57)';
+    measureMenu.hidden=false;
+   }else status.textContent='Ponto 3D provisório registrado. Selecione o próximo ponto.';
+  }catch(err){status.textContent='Falha na profundidade: '+err.message;}
+  return;
+ }
+
  if(activeMode.key==='angle'&&measurePoints.length===2){const deg=measurePoints[0].angleTo(measurePoints[1])*180/Math.PI;status.textContent='Ângulo visual: '+deg.toFixed(2)+'°. Não é um ângulo entre superfícies 3D.';}
  else if(activeMode.key==='point')status.textContent=measurePoints.length+' ponto(s) marcados. Sem profundidade associada.';
  else if(activeMode.key==='distance'&&measurePoints.length===2){const angle=measurePoints[0].angleTo(measurePoints[1])*180/Math.PI;status.textContent='Dois pontos marcados na BubbleView. Separação angular: '+angle.toFixed(2)+'°. Distância em metros pendente da profundidade 3D.';measureMenu.hidden=false;}
@@ -76,7 +101,7 @@ function updateAnnotations(){
 }
 function renderPano(){if(!panoRenderer)return;longitude=Math.max(-1e6,Math.min(1e6,longitude));latitude=Math.max(-85,Math.min(85,latitude));const phi=((90-latitude)*Math.PI/180),theta=(longitude*Math.PI/180);panoCamera.lookAt(new THREE.Vector3(Math.sin(phi)*Math.cos(theta),Math.cos(phi),Math.sin(phi)*Math.sin(theta)));panoRenderer.render(panoScene,panoCamera);updateAnnotations();}
 function openPanorama(station){
- closePanorama();overlay.style.display='block';
+ closePanorama();currentStation=station;overlay.style.display='block';
  panoRenderer=new THREE.WebGLRenderer({antialias:true});panoRenderer.setPixelRatio(Math.min(devicePixelRatio,2));panoRenderer.setSize(innerWidth,innerHeight);overlay.appendChild(panoRenderer.domElement);
  panoScene=new THREE.Scene();panoCamera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1100);
  const geometry=new THREE.SphereGeometry(500,64,40);geometry.scale(-1,1,1);

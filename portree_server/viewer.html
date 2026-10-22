@@ -25,9 +25,9 @@ const bubbleTitle=document.createElement('strong');bubbleTitle.textContent='Bubb
 const bubbleToggle=document.createElement('button');bubbleToggle.className='bubble-toggle';bubbleToggle.textContent='−';bubbleToggle.title='Minimizar BubbleViews';bubbleToggle.onclick=()=>{const collapsed=panel.classList.toggle('collapsed');bubbleToggle.textContent=collapsed?'+':'−';bubbleToggle.title=collapsed?'Expandir BubbleViews':'Minimizar BubbleViews';};bubbleHeader.appendChild(bubbleToggle);panel.appendChild(bubbleHeader);
 const bubbleContent=document.createElement('div');bubbleContent.className='bubble-content';panel.appendChild(bubbleContent);
 const overlay=document.createElement('div');overlay.id='bubble-overlay';overlay.innerHTML='<div class="np-brand"><span class="np-logo">NP</span><span>PORTREE <b>NP</b><small>INSPEÇÃO PANORÂMICA</small></span></div><div class="np-top"><button id="bubble-measure" class="np-button">Ferramentas de medida</button><button id="bubble-close" class="np-button">Voltar à nuvem</button></div><div id="bubble-measure-menu" hidden><div class="np-menu-title">Ferramentas de medida</div><div id="bubble-measure-buttons"></div><div id="bubble-status" role="status">Escolha uma ferramenta para começar.</div><button id="bubble-clear" class="np-button">Limpar marcações</button></div><div id="bubble-annotations"></div>';document.body.appendChild(overlay);
-let panoRenderer,panoScene,panoCamera,panoMesh,dragging=false,lastX=0,lastY=0,longitude=0,latitude=0,activeMode=null,measurePoints=[],measureDots=[],measureLines=[],pointerStart=null,currentStation=null,measureXYZ=[];
+let panoRenderer,panoScene,panoCamera,panoMesh,dragging=false,lastX=0,lastY=0,longitude=0,latitude=0,activeMode=null,measurePoints=[],measureDots=[],measureLines=[],pointerStart=null,currentStation=null,measureXYZ=[],measurementLabel='';
 const measureMenu=document.getElementById('bubble-measure-menu'),annotations=document.getElementById('bubble-annotations');
-function clearAnnotations(){measureXYZ=[];measurePoints=[];annotations.replaceChildren();measureDots=[];measureLines=[];document.getElementById('bubble-status').textContent='Marcações removidas.';}
+function clearAnnotations(){measurementLabel='';measureXYZ=[];measurePoints=[];annotations.replaceChildren();measureDots=[];measureLines=[];document.getElementById('bubble-status').textContent='Marcações removidas.';}
 function closePanorama(){overlay.style.display='none';measureMenu.hidden=true;activeMode=null;currentStation=null;clearAnnotations();if(panoRenderer){panoRenderer.dispose();panoRenderer.domElement.remove();panoRenderer=null;}if(panoMesh){panoMesh.geometry.dispose();if(panoMesh.material.map)panoMesh.material.map.dispose();panoMesh.material.dispose();panoMesh=null;}}
 document.getElementById('bubble-close').onclick=closePanorama;
 document.getElementById('bubble-measure').onclick=()=>{measureMenu.hidden=!measureMenu.hidden;};
@@ -75,7 +75,7 @@ async function addAnnotation(x,y){
     status.textContent='XYZ provisório (unidade do E57): '+result.xyz.map(v=>v.toFixed(3)).join(', ')+' · alinhamento ainda não calibrado';
    }else if(measureXYZ[0]&&measureXYZ[1]){
     const a=measureXYZ[0],b=measureXYZ[1],dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2];
-    status.textContent='RESULTADO PROVISÓRIO, NÃO VALIDADO · 3D: '+Math.hypot(dx,dy,dz).toFixed(3)+' | horizontal XY: '+Math.hypot(dx,dy).toFixed(3)+' | ΔZ: '+Math.abs(dz).toFixed(3)+' (unidade do E57)';
+    measurementLabel=Math.hypot(dx,dy,dz).toFixed(3)+' un. E57';updateAnnotations();status.textContent='RESULTADO PROVISÓRIO, NÃO VALIDADO · 3D: '+Math.hypot(dx,dy,dz).toFixed(3)+' | horizontal XY: '+Math.hypot(dx,dy).toFixed(3)+' | ΔZ: '+Math.abs(dz).toFixed(3)+' (unidade do E57)';
     measureMenu.hidden=false;
    }else status.textContent='Ponto 3D provisório registrado. Selecione o próximo ponto.';
   }catch(err){status.textContent='Falha na profundidade: '+err.message;}
@@ -91,12 +91,33 @@ function updateAnnotations(){
  if(!panoRenderer)return;
  const rect=panoRenderer.domElement.getBoundingClientRect();
  panoCamera.updateMatrixWorld();
+ const projectedPoints=[];
  for(let i=0;i<measurePoints.length;i++){
   const projected=measurePoints[i].clone().multiplyScalar(10).project(panoCamera);
   const visible=projected.z<1&&projected.z>-1;
+  const x=(projected.x+1)/2*rect.width,y=(1-projected.y)/2*rect.height;
+  projectedPoints.push({x,y,visible});
   measureDots[i].style.display=visible?'grid':'none';
-  measureDots[i].style.left=((projected.x+1)/2*rect.width)+'px';
-  measureDots[i].style.top=((1-projected.y)/2*rect.height)+'px';
+  measureDots[i].style.left=x+'px';
+  measureDots[i].style.top=y+'px';
+ }
+ const old=annotations.querySelector('.np-measure-graphic');
+ if(old)old.remove();
+ if(projectedPoints.length!==2||!activeMode||!['distance','components'].includes(activeMode.key))return;
+ const [a,b]=projectedPoints;
+ if(!a.visible||!b.visible)return;
+ const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);
+ if(length<1)return;
+ const line=document.createElement('div');
+ line.className='np-measure-graphic';
+ line.style.cssText='position:absolute;left:'+a.x+'px;top:'+a.y+'px;width:'+length+'px;height:0;border-top:3px solid #37e7e0;transform-origin:0 0;transform:rotate('+Math.atan2(dy,dx)+'rad);filter:drop-shadow(0 1px 3px #001b26);pointer-events:none';
+ annotations.appendChild(line);
+ if(measurementLabel){
+  const label=document.createElement('div');
+  label.className='np-measure-graphic';
+  label.textContent=measurementLabel+' · provisório';
+  label.style.cssText='position:absolute;left:'+((a.x+b.x)/2)+'px;top:'+((a.y+b.y)/2-18)+'px;transform:translate(-50%,-100%);background:#0b2638eb;color:#e6ffff;border:1px solid #37d9d0;border-radius:7px;padding:6px 10px;font:700 14px Arial;white-space:nowrap;box-shadow:0 3px 12px #0009;pointer-events:none';
+  annotations.appendChild(label);
  }
 }
 function renderPano(){if(!panoRenderer)return;longitude=Math.max(-1e6,Math.min(1e6,longitude));latitude=Math.max(-85,Math.min(85,latitude));const phi=((90-latitude)*Math.PI/180),theta=(longitude*Math.PI/180);panoCamera.lookAt(new THREE.Vector3(Math.sin(phi)*Math.cos(theta),Math.cos(phi),Math.sin(phi)*Math.sin(theta)));panoRenderer.render(panoScene,panoCamera);updateAnnotations();}

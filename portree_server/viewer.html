@@ -20,7 +20,7 @@ const overlay=document.createElement('div');overlay.id='bubble-overlay';overlay.
 let panoRenderer,panoScene,panoCamera,panoMesh,dragging=false,lastX=0,lastY=0,longitude=0,latitude=0;
 function closePanorama(){overlay.style.display='none';if(panoRenderer){panoRenderer.dispose();panoRenderer.domElement.remove();panoRenderer=null;}if(panoMesh){panoMesh.geometry.dispose();panoMesh.material.map.dispose();panoMesh.material.dispose();panoMesh=null;}}
 document.getElementById('bubble-close').onclick=closePanorama;
-function renderPano(){if(!panoRenderer)return;longitude=Math.max(-1e6,Math.min(1e6,longitude));latitude=Math.max(-85,Math.min(85,latitude));const phi=THREE.MathUtils.degToRad(90-latitude),theta=THREE.MathUtils.degToRad(longitude);panoCamera.lookAt(new THREE.Vector3(Math.sin(phi)*Math.cos(theta),Math.cos(phi),Math.sin(phi)*Math.sin(theta)));panoRenderer.render(panoScene,panoCamera);}
+function renderPano(){if(!panoRenderer)return;longitude=Math.max(-1e6,Math.min(1e6,longitude));latitude=Math.max(-85,Math.min(85,latitude));const phi=((90-latitude)*Math.PI/180),theta=(longitude*Math.PI/180);panoCamera.lookAt(new THREE.Vector3(Math.sin(phi)*Math.cos(theta),Math.cos(phi),Math.sin(phi)*Math.sin(theta)));panoRenderer.render(panoScene,panoCamera);}
 function openPanorama(station){
  closePanorama();overlay.style.display='block';
  panoRenderer=new THREE.WebGLRenderer({antialias:true});panoRenderer.setPixelRatio(Math.min(devicePixelRatio,2));panoRenderer.setSize(innerWidth,innerHeight);overlay.appendChild(panoRenderer.domElement);
@@ -37,12 +37,11 @@ overlay.addEventListener('wheel',e=>{if(!panoCamera)return;e.preventDefault();pa
 window.addEventListener('resize',()=>{if(!panoRenderer)return;panoCamera.aspect=innerWidth/innerHeight;panoCamera.updateProjectionMatrix();panoRenderer.setSize(innerWidth,innerHeight);renderPano()});
 fetch('/shared/'+token+'/stations.json').then(r=>{if(!r.ok)throw Error('Sem BubbleViews');return r.json()}).then(data=>{
  panel.textContent='';const title=document.createElement('strong');title.textContent='BubbleViews ('+data.stations.length+')';panel.appendChild(title);
- const markers=[];
  for(const station of data.stations){
-   const button=document.createElement('button');button.textContent=station.name;button.onclick=()=>openPanorama(station);panel.appendChild(button);
-   const marker=new THREE.Mesh(new THREE.SphereGeometry(0.4,12,8),new THREE.MeshBasicMaterial({color:0x00ccff,depthTest:false}));
-   marker.position.set(...station.position);marker.userData.station=station;viewer.scene.scene.add(marker);markers.push(marker);
+   const button=document.createElement('button');
+   button.textContent=station.name;
+   button.onclick=()=>{try{openPanorama(station)}catch(err){console.error('Erro ao abrir panorama',err);alert('Erro ao abrir panorama: '+err.message);}};
+   panel.appendChild(button);
  }
- // Markers are decorative in the first iteration; list buttons provide reliable navigation.
-}).catch(()=>{panel.textContent='BubbleViews ainda não extraídas para esta nuvem.'});
+}).catch(err=>{console.error('Falha ao carregar BubbleViews',err);panel.textContent='Erro ao carregar estações: '+err.message;});
 </script></html>

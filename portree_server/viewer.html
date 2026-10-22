@@ -11,4 +11,38 @@ const viewer=new Potree.Viewer(document.getElementById('potree_render_area'));
 viewer.setEDLEnabled(false);viewer.setPointBudget(1500000);viewer.setBackground('gradient');
 viewer.loadGUI(()=>{viewer.setLanguage('en')});
 Potree.loadPointCloud(cloud,'E57',e=>{viewer.scene.addPointCloud(e.pointcloud);viewer.fitToScreen()});
+
+const style=document.createElement('style');
+style.textContent='#bubble-panel{position:fixed;top:12px;right:12px;z-index:1000;background:#15202bcc;color:white;padding:12px;border-radius:8px;max-height:70vh;overflow:auto;font:14px Arial}#bubble-panel button{display:block;margin:5px 0;padding:7px;cursor:pointer}#bubble-overlay{display:none;position:fixed;inset:0;background:#000;z-index:2000}#bubble-overlay canvas{display:block;width:100%;height:100%}#bubble-close{position:absolute;right:20px;top:20px;z-index:3;padding:10px;cursor:pointer}';
+document.head.appendChild(style);
+const panel=document.createElement('div');panel.id='bubble-panel';panel.textContent='Carregando estações...';document.body.appendChild(panel);
+const overlay=document.createElement('div');overlay.id='bubble-overlay';overlay.innerHTML='<button id="bubble-close">Voltar à nuvem</button>';document.body.appendChild(overlay);
+let panoRenderer,panoScene,panoCamera,panoMesh,dragging=false,lastX=0,lastY=0,longitude=0,latitude=0;
+function closePanorama(){overlay.style.display='none';if(panoRenderer){panoRenderer.dispose();panoRenderer.domElement.remove();panoRenderer=null;}if(panoMesh){panoMesh.geometry.dispose();panoMesh.material.map.dispose();panoMesh.material.dispose();panoMesh=null;}}
+document.getElementById('bubble-close').onclick=closePanorama;
+function renderPano(){if(!panoRenderer)return;longitude=Math.max(-1e6,Math.min(1e6,longitude));latitude=Math.max(-85,Math.min(85,latitude));const phi=THREE.MathUtils.degToRad(90-latitude),theta=THREE.MathUtils.degToRad(longitude);panoCamera.lookAt(new THREE.Vector3(Math.sin(phi)*Math.cos(theta),Math.cos(phi),Math.sin(phi)*Math.sin(theta)));panoRenderer.render(panoScene,panoCamera);}
+function openPanorama(station){
+ closePanorama();overlay.style.display='block';
+ panoRenderer=new THREE.WebGLRenderer({antialias:true});panoRenderer.setPixelRatio(Math.min(devicePixelRatio,2));panoRenderer.setSize(innerWidth,innerHeight);overlay.appendChild(panoRenderer.domElement);
+ panoScene=new THREE.Scene();panoCamera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1100);
+ const geometry=new THREE.SphereGeometry(500,64,40);geometry.scale(-1,1,1);
+ const texture=new THREE.TextureLoader().load('/shared/'+token+'/'+station.image,renderPano,undefined,err=>{console.error(err);alert('Não foi possível carregar a panorâmica');});
+ panoMesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({map:texture}));panoScene.add(panoMesh);
+ longitude=0;latitude=0;renderPano();
+}
+overlay.addEventListener('pointerdown',e=>{if(e.target.tagName==='BUTTON')return;dragging=true;lastX=e.clientX;lastY=e.clientY;overlay.setPointerCapture(e.pointerId)});
+overlay.addEventListener('pointerup',()=>dragging=false);
+overlay.addEventListener('pointermove',e=>{if(!dragging)return;longitude+=(lastX-e.clientX)*0.15;latitude+=(e.clientY-lastY)*0.15;lastX=e.clientX;lastY=e.clientY;renderPano()});
+overlay.addEventListener('wheel',e=>{if(!panoCamera)return;e.preventDefault();panoCamera.fov=Math.max(30,Math.min(100,panoCamera.fov+Math.sign(e.deltaY)*4));panoCamera.updateProjectionMatrix();renderPano()},{passive:false});
+window.addEventListener('resize',()=>{if(!panoRenderer)return;panoCamera.aspect=innerWidth/innerHeight;panoCamera.updateProjectionMatrix();panoRenderer.setSize(innerWidth,innerHeight);renderPano()});
+fetch('/shared/'+token+'/stations.json').then(r=>{if(!r.ok)throw Error('Sem BubbleViews');return r.json()}).then(data=>{
+ panel.textContent='';const title=document.createElement('strong');title.textContent='BubbleViews ('+data.stations.length+')';panel.appendChild(title);
+ const markers=[];
+ for(const station of data.stations){
+   const button=document.createElement('button');button.textContent=station.name;button.onclick=()=>openPanorama(station);panel.appendChild(button);
+   const marker=new THREE.Mesh(new THREE.SphereGeometry(0.4,12,8),new THREE.MeshBasicMaterial({color:0x00ccff,depthTest:false}));
+   marker.position.set(...station.position);marker.userData.station=station;viewer.scene.scene.add(marker);markers.push(marker);
+ }
+ // Markers are decorative in the first iteration; list buttons provide reliable navigation.
+}).catch(()=>{panel.textContent='BubbleViews ainda não extraídas para esta nuvem.'});
 </script></html>

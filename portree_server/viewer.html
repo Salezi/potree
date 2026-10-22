@@ -75,7 +75,7 @@ async function addAnnotation(x,y){
     status.textContent='XYZ provisório (unidade do E57): '+result.xyz.map(v=>v.toFixed(3)).join(', ')+' · alinhamento ainda não calibrado';
    }else if(measureXYZ[0]&&measureXYZ[1]){
     const a=measureXYZ[0],b=measureXYZ[1],dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2];
-    measurementLabel=Math.hypot(dx,dy,dz).toFixed(3)+' un. E57';updateAnnotations();status.textContent='RESULTADO PROVISÓRIO, NÃO VALIDADO · 3D: '+Math.hypot(dx,dy,dz).toFixed(3)+' | horizontal XY: '+Math.hypot(dx,dy).toFixed(3)+' | ΔZ: '+Math.abs(dz).toFixed(3)+' (unidade do E57)';
+    measurementLabel=Math.hypot(dx,dy,dz).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' m*';updateAnnotations();status.textContent='MEDIÇÃO PROVISÓRIA · 3D: '+Math.hypot(dx,dy,dz).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' m* | horizontal XY: '+Math.hypot(dx,dy).toFixed(3)+' | ΔZ: '+Math.abs(dz).toFixed(3)+' · *metros presumidos; confirmar unidade e calibração do E57';
     measureMenu.hidden=false;
    }else status.textContent='Ponto 3D provisório registrado. Selecione o próximo ponto.';
   }catch(err){status.textContent='Falha na profundidade: '+err.message;}

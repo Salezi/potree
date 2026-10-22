@@ -17,9 +17,13 @@ renderArea.addEventListener('pointerup',e=>{if(overlay.style.display==='block'||
 Potree.loadPointCloud(cloud,'E57',e=>{viewer.scene.addPointCloud(e.pointcloud);viewer.fitToScreen()});
 
 const style=document.createElement('style');
-style.textContent='#bubble-panel{position:fixed;top:12px;right:12px;z-index:1000;background:#15202bcc;color:white;padding:12px;border-radius:8px;max-height:70vh;overflow:auto;font:14px Arial}#bubble-panel button{display:block;margin:5px 0;padding:7px;cursor:pointer}#bubble-overlay{display:none;position:fixed;inset:0;background:#000;z-index:2000}#bubble-overlay canvas{display:block;width:100%;height:100%}#bubble-close{position:absolute;right:20px;top:20px;z-index:3;padding:10px;cursor:pointer}';
+style.textContent='#bubble-panel{position:fixed;top:12px;right:12px;left:auto;bottom:auto;width:220px;max-width:calc(100vw - 24px);box-sizing:border-box;z-index:1000;background:#15202bf0;color:white;padding:10px;border-radius:8px;max-height:65vh;overflow:auto;font:14px Arial;box-shadow:0 3px 16px #0006}#bubble-panel .bubble-station{display:block;width:100%;margin:5px 0;padding:7px;cursor:pointer;text-align:left}#bubble-panel .bubble-toggle{float:right;padding:2px 7px;cursor:pointer}#bubble-panel.collapsed .bubble-content{display:none}#bubble-overlay{display:none;position:fixed;inset:0;background:#000;z-index:2000}#bubble-overlay canvas{display:block;width:100%;height:100%}#bubble-close{position:absolute;right:20px;top:20px;z-index:3;padding:10px;cursor:pointer}';
 document.head.appendChild(style);
-const panel=document.createElement('div');panel.id='bubble-panel';panel.textContent='Carregando estações...';document.body.appendChild(panel);
+const panel=document.createElement('div');panel.id='bubble-panel';document.body.appendChild(panel);
+const bubbleHeader=document.createElement('div');bubbleHeader.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px';
+const bubbleTitle=document.createElement('strong');bubbleTitle.textContent='BubbleViews · carregando';bubbleHeader.appendChild(bubbleTitle);
+const bubbleToggle=document.createElement('button');bubbleToggle.className='bubble-toggle';bubbleToggle.textContent='−';bubbleToggle.title='Minimizar BubbleViews';bubbleToggle.onclick=()=>{const collapsed=panel.classList.toggle('collapsed');bubbleToggle.textContent=collapsed?'+':'−';bubbleToggle.title=collapsed?'Expandir BubbleViews':'Minimizar BubbleViews';};bubbleHeader.appendChild(bubbleToggle);panel.appendChild(bubbleHeader);
+const bubbleContent=document.createElement('div');bubbleContent.className='bubble-content';panel.appendChild(bubbleContent);
 const overlay=document.createElement('div');overlay.id='bubble-overlay';overlay.innerHTML='<button id="bubble-close">Voltar à nuvem</button>';document.body.appendChild(overlay);
 let panoRenderer,panoScene,panoCamera,panoMesh,dragging=false,lastX=0,lastY=0,longitude=0,latitude=0;
 function closePanorama(){overlay.style.display='none';if(panoRenderer){panoRenderer.dispose();panoRenderer.domElement.remove();panoRenderer=null;}if(panoMesh){panoMesh.geometry.dispose();if(panoMesh.material.map)panoMesh.material.map.dispose();panoMesh.material.dispose();panoMesh=null;}}
@@ -40,16 +44,16 @@ overlay.addEventListener('pointermove',e=>{if(!dragging)return;longitude+=(lastX
 overlay.addEventListener('wheel',e=>{if(!panoCamera)return;e.preventDefault();panoCamera.fov=Math.max(30,Math.min(100,panoCamera.fov+Math.sign(e.deltaY)*4));panoCamera.updateProjectionMatrix();renderPano()},{passive:false});
 window.addEventListener('resize',()=>{if(!panoRenderer)return;panoCamera.aspect=innerWidth/innerHeight;panoCamera.updateProjectionMatrix();panoRenderer.setSize(innerWidth,innerHeight);renderPano()});
 fetch('/shared/'+token+'/stations.json').then(r=>{if(!r.ok)throw Error('Sem BubbleViews');return r.json()}).then(data=>{
- panel.textContent='';const title=document.createElement('strong');title.textContent='BubbleViews ('+data.stations.length+')';panel.appendChild(title);const hint=document.createElement('div');hint.textContent='Clique em uma esfera azul na nuvem ou escolha uma estação abaixo.';hint.style.margin='8px 0';panel.appendChild(hint);
+ bubbleContent.textContent='';bubbleTitle.textContent='BubbleViews ('+data.stations.length+')';const hint=document.createElement('div');hint.textContent='Clique em uma esfera azul na nuvem ou escolha uma estação abaixo.';hint.style.margin='8px 0';bubbleContent.appendChild(hint);
  stationsReady=data.stations;
  for(const station of data.stations){
    const marker=new THREE.Mesh(new THREE.SphereGeometry(0.65,16,12),new THREE.MeshBasicMaterial({color:0x00d5ff,depthTest:false}));
    marker.position.set(...station.position);marker.userData.station=station;marker.renderOrder=999;
    bubbleMarkerGroup.add(marker);bubbleMarkers.push(marker);
-   const button=document.createElement('button');
+   const button=document.createElement('button');button.className='bubble-station';
    button.textContent=station.name;
    button.onclick=()=>{try{openPanorama(station)}catch(err){console.error('Erro ao abrir panorama',err);alert('Erro ao abrir panorama: '+err.message);}};
-   panel.appendChild(button);
+   bubbleContent.appendChild(button);
  }
-}).catch(err=>{console.error('Falha ao carregar BubbleViews',err);panel.textContent='Erro ao carregar estações: '+err.message;});
+}).catch(err=>{console.error('Falha ao carregar BubbleViews',err);bubbleTitle.textContent='BubbleViews · erro';bubbleContent.textContent='Erro ao carregar estações: '+err.message;});
 </script></html>

@@ -9,6 +9,10 @@ import subprocess
 import sys
 import threading
 import traceback
+import json
+import numpy as np
+from functools import lru_cache
+from pydantic import BaseModel
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -97,6 +101,58 @@ def job_status(job_id: str, request: Request):
         if job_id not in jobs:
             raise HTTPException(404, "Processamento não encontrado")
         return dict(jobs[job_id])
+
+
+class DepthQuery(BaseModel):
+    station_id: int
+    direction: list[float]
+
+@lru_cache(maxsize=4)
+def load_depth(path: str):
+    with np.load(path) as data:
+        return (data["depth"].copy(),data["origin"].copy(),data["rotation"].copy())
+
+@app.post("/api/depth/{token}")
+def query_depth(token: str, query: DepthQuery):
+    folder=cloud_for_token(token)
+    if len(query.direction)!=3 or not 1<=query.station_id<=9999:
+        raise HTTPException(400,"Invalid direction or station")
+    path=folder / f"depth_{query.station_id:03d}.npz"
+    if not path.is_file():
+        return {"status":"not_generated","message":"Depth map not generated for this station"}
+    depth,origin,q=load_depth(str(path))
+    direction=np.asarray(query.direction,dtype=np.float64)
+    length=np.linalg.norm(direction)
+    if not np.isfinite(length) or length<1e-9:
+        raise HTTPException(400,"Invalid ray")
+    direction/=length
+    w,x,y,z=q
+    R=np.array([[1-2*(y*y+z*z),2*(x*y-z*w),2*(x*z+y*w)],
+                [2*(x*y+z*w),1-2*(x*x+z*z),2*(y*z-x*w)],
+                [2*(x*z-y*w),2*(y*z+x*w),1-2*(x*x+y*y)]])
+    local=direction@R
+    az=np.arctan2(local[2],local[0])
+    el=np.arcsin(np.clip(local[1],-1,1))
+    h,width=depth.shape
+    col=int(np.clip((az+np.pi)/(2*np.pi)*width,0,width-1))
+    row=int(np.clip((np.pi/2-el)/np.pi*h,0,h-1))
+    # Require several nearby samples to avoid claiming an isolated return is a surface.
+    neighbors=[]
+    for dy in range(-2,3):
+        for dx in range(-2,3):
+            rr=row+dy;cc=(col+dx)%width
+            if 0<=rr<h and np.isfinite(depth[rr,cc]):
+                neighbors.append(float(depth[rr,cc]))
+    if len(neighbors)<4:
+        return {"status":"no_depth","message":"Insufficient depth samples near click"}
+    samples=np.asarray(neighbors)
+    median=float(np.median(samples))
+    spread=float(np.percentile(samples,90)-np.percentile(samples,10))
+    if spread>max(0.20,median*0.025):
+        return {"status":"ambiguous","message":"Depth discontinuity; cannot measure reliably"}
+    xyz=(origin+direction*median).tolist()
+    return {"status":"provisional","xyz":xyz,"range":median,"samples":len(samples),
+            "warning":"Depth and panorama alignment have not been field-calibrated"}
 
 @app.get("/s/{token}")
 def shared_viewer(token: str):

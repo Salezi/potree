@@ -24,3 +24,13 @@ Open http://127.0.0.1:8000/portree/ and upload an E57. The converter binary must
 - Job state is in memory and is lost on restart.
 - Only use locally or on a trusted network until authentication, storage controls, background workers and rate limits are implemented.
 - Validate accuracy, offsets and color scaling against a real FARO E57 before engineering use.
+
+## Sharing prototype
+
+After a successful conversion, the local upload dashboard displays **Copiar link para o cliente**. The public route is `/s/<random-token>`; the viewer requests octree files through `/shared/<token>/...`. Tokens are stored as `.share-token` files alongside each converted cloud and persist after restart.
+
+By default, administrative upload/status routes are limited to loopback clients. To permit remote uploads, set `PORTREE_ADMIN_KEY` and provide `X-Portree-Key` in requests (a future admin login UI is needed). This prototype does not yet implement accounts, role-based sharing, link revocation, quotas, resumable upload, or auditing. **Never expose the administration UI publicly without hardening.** HTTP transmits data without encryption.
+
+To serve a link on the local network, start uvicorn with `--host 0.0.0.0` and use your computer's LAN IP address instead of `127.0.0.1`. The default dashboard remains local-only. Public Internet access requires network routing and security review.
+
+The current upload cap defaults to **20 GiB** and is configurable with `PORTREE_MAX_UPLOAD_BYTES`. Increasing it does not make the current E57-to-LAS conversion suitable for 100+ GB input. **Large-file streaming, panoramic station extraction and production-ready security remain unimplemented.**

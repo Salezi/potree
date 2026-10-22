@@ -7,9 +7,13 @@
 const token=location.pathname.split('/').filter(Boolean)[1];
 if(!token || !/^[A-Za-z0-9_-]{32,64}$/.test(token)){document.body.textContent='Link inválido';throw Error('Invalid share token')}
 const cloud='/shared/'+token+'/metadata.json';
+let stationsReady=[];const bubbleRaycaster=new THREE.Raycaster();const bubbleMarkers=[];const bubbleMarkerGroup=new THREE.Group();
 const viewer=new Potree.Viewer(document.getElementById('potree_render_area'));
 viewer.setEDLEnabled(false);viewer.setPointBudget(1500000);viewer.setBackground('gradient');
 viewer.loadGUI(()=>{viewer.setLanguage('en')});
+viewer.scene.scene.add(bubbleMarkerGroup);
+const renderArea=document.getElementById('potree_render_area');
+renderArea.addEventListener('pointerup',e=>{if(overlay.style.display==='block'||e.button!==0)return;const rect=renderArea.getBoundingClientRect();const pointer=new THREE.Vector2(((e.clientX-rect.left)/rect.width)*2-1,-((e.clientY-rect.top)/rect.height)*2+1);bubbleRaycaster.setFromCamera(pointer,viewer.scene.getActiveCamera());const hits=bubbleRaycaster.intersectObjects(bubbleMarkers,false);if(hits.length){e.stopPropagation();openPanorama(hits[0].object.userData.station);}},true);
 Potree.loadPointCloud(cloud,'E57',e=>{viewer.scene.addPointCloud(e.pointcloud);viewer.fitToScreen()});
 
 const style=document.createElement('style');
@@ -36,8 +40,12 @@ overlay.addEventListener('pointermove',e=>{if(!dragging)return;longitude+=(lastX
 overlay.addEventListener('wheel',e=>{if(!panoCamera)return;e.preventDefault();panoCamera.fov=Math.max(30,Math.min(100,panoCamera.fov+Math.sign(e.deltaY)*4));panoCamera.updateProjectionMatrix();renderPano()},{passive:false});
 window.addEventListener('resize',()=>{if(!panoRenderer)return;panoCamera.aspect=innerWidth/innerHeight;panoCamera.updateProjectionMatrix();panoRenderer.setSize(innerWidth,innerHeight);renderPano()});
 fetch('/shared/'+token+'/stations.json').then(r=>{if(!r.ok)throw Error('Sem BubbleViews');return r.json()}).then(data=>{
- panel.textContent='';const title=document.createElement('strong');title.textContent='BubbleViews ('+data.stations.length+')';panel.appendChild(title);
+ panel.textContent='';const title=document.createElement('strong');title.textContent='BubbleViews ('+data.stations.length+')';panel.appendChild(title);const hint=document.createElement('div');hint.textContent='Clique em uma esfera azul na nuvem ou escolha uma estação abaixo.';hint.style.margin='8px 0';panel.appendChild(hint);
+ stationsReady=data.stations;
  for(const station of data.stations){
+   const marker=new THREE.Mesh(new THREE.SphereGeometry(0.65,16,12),new THREE.MeshBasicMaterial({color:0x00d5ff,depthTest:false}));
+   marker.position.set(...station.position);marker.userData.station=station;marker.renderOrder=999;
+   bubbleMarkerGroup.add(marker);bubbleMarkers.push(marker);
    const button=document.createElement('button');
    button.textContent=station.name;
    button.onclick=()=>{try{openPanorama(station)}catch(err){console.error('Erro ao abrir panorama',err);alert('Erro ao abrir panorama: '+err.message);}};

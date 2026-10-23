@@ -1,0 +1,151 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Portree NP Viewer</title>
+<link rel="stylesheet" href="/potree-assets/build/potree/potree.css"><link rel="stylesheet" href="/potree-assets/libs/jquery-ui/jquery-ui.min.css"><link rel="stylesheet" href="/potree-assets/libs/openlayers3/ol.css"><link rel="stylesheet" href="/potree-assets/libs/spectrum/spectrum.css"><link rel="stylesheet" href="/potree-assets/libs/jstree/themes/mixed/style.css">
+<style>html,body{margin:0;height:100%;overflow:hidden}.potree_container{position:absolute;inset:0}</style>
+<script src="/potree-assets/libs/jquery/jquery-3.1.1.min.js"></script><script src="/potree-assets/libs/spectrum/spectrum.js"></script><script src="/potree-assets/libs/jquery-ui/jquery-ui.min.js"></script><script src="/potree-assets/libs/other/BinaryHeap.js"></script><script src="/potree-assets/libs/tween/tween.min.js"></script><script src="/potree-assets/libs/d3/d3.js"></script><script src="/potree-assets/libs/proj4/proj4.js"></script><script src="/potree-assets/libs/openlayers3/ol.js"></script><script src="/potree-assets/libs/i18next/i18next.js"></script><script src="/potree-assets/libs/jstree/jstree.js"></script><script src="/potree-assets/libs/three.js/build/three.min.js"></script><script src="/potree-assets/build/potree/potree.js"></script><script src="/potree-assets/libs/plasio/js/laslaz.js"></script>
+<div class="potree_container"><div id="potree_render_area" style="position:absolute;inset:0"></div><div id="potree_sidebar_container"></div></div>
+<script>
+const token=location.pathname.split('/').filter(Boolean)[1];
+if(!token || !/^[A-Za-z0-9_-]{32,64}$/.test(token)){document.body.textContent='Link inválido';throw Error('Invalid share token')}
+const cloud='/shared/'+token+'/metadata.json';
+let stationsReady=[];const bubbleRaycaster=new THREE.Raycaster();const bubbleMarkers=[];const bubbleMarkerGroup=new THREE.Group();
+const viewer=new Potree.Viewer(document.getElementById('potree_render_area'));
+viewer.setEDLEnabled(false);viewer.setPointBudget(1500000);viewer.setBackground('gradient');
+viewer.loadGUI(()=>{viewer.setLanguage('en')});
+viewer.scene.scene.add(bubbleMarkerGroup);
+const renderArea=document.getElementById('potree_render_area');
+renderArea.addEventListener('pointerup',e=>{if(overlay.style.display==='block'||e.button!==0)return;const rect=renderArea.getBoundingClientRect();const pointer=new THREE.Vector2(((e.clientX-rect.left)/rect.width)*2-1,-((e.clientY-rect.top)/rect.height)*2+1);bubbleRaycaster.setFromCamera(pointer,viewer.scene.getActiveCamera());const hits=bubbleRaycaster.intersectObjects(bubbleMarkers,false);if(hits.length){e.stopPropagation();openPanorama(hits[0].object.userData.station);}},true);
+Potree.loadPointCloud(cloud,'E57',e=>{viewer.scene.addPointCloud(e.pointcloud);viewer.fitToScreen()});
+
+const style=document.createElement('style');
+style.textContent='#bubble-panel{position:fixed;top:12px;right:12px;left:auto;bottom:auto;width:220px;max-width:calc(100vw - 24px);box-sizing:border-box;z-index:1000;background:#15202bf0;color:white;padding:10px;border-radius:8px;max-height:65vh;overflow:auto;font:14px Arial;box-shadow:0 3px 16px #0006}#bubble-panel .bubble-station{display:block;width:100%;margin:5px 0;padding:7px;cursor:pointer;text-align:left}#bubble-panel .bubble-toggle{float:right;padding:2px 7px;cursor:pointer}#bubble-panel.collapsed .bubble-content{display:none}#bubble-overlay{display:none;position:fixed;inset:0;background:#000;z-index:2000}#bubble-overlay canvas{display:block;width:100%;height:100%}#bubble-close{position:absolute;right:20px;top:20px;z-index:3;padding:10px;cursor:pointer}#bubble-measure{position:absolute;left:20px;top:20px;z-index:3;padding:10px;cursor:pointer}#bubble-measure-note{position:absolute;left:20px;top:62px;z-index:3;background:#18212ddd;color:#fff;padding:8px;max-width:340px;font:13px Arial}';
+style.textContent+=':root{--np-accent:#37d9d0;--np-panel:#0b1927f2;--np-border:#376077}#bubble-panel{background:linear-gradient(145deg,#142b3a,#0b1927f2);border:1px solid var(--np-border);border-radius:12px}#bubble-overlay{background:radial-gradient(circle at 25% 20%,#163349,#07121c 70%)}.np-brand{position:absolute;top:14px;left:18px;z-index:4;display:flex;align-items:center;gap:10px;color:white;font:700 17px Arial;letter-spacing:2px;pointer-events:none}.np-brand small{display:block;font:10px Arial;letter-spacing:2px;color:#8bb8c3}.np-logo{display:grid;place-items:center;background:linear-gradient(135deg,#32e0d2,#15849c);width:37px;height:37px;border-radius:10px;color:#05202c}.np-top{position:absolute;top:16px;right:16px;z-index:5;display:flex;gap:8px}.np-button,#bubble-panel button{border:1px solid #3b687b;background:linear-gradient(180deg,#213f51,#112939);color:#e7f7fa;border-radius:8px;font:600 13px Arial;padding:10px 13px;cursor:pointer;transition:background .15s}.np-button:hover,#bubble-panel button:hover{background:#28576a}.np-active{border-color:var(--np-accent)!important;color:var(--np-accent)!important}#bubble-measure-menu{position:absolute;right:16px;top:69px;left:auto;z-index:6;width:260px;max-height:calc(100vh - 90px);overflow:auto;background:var(--np-panel);border:1px solid var(--np-border);border-radius:12px;padding:13px;color:white;box-shadow:0 12px 40px #0008;font:13px Arial}#bubble-measure-menu[hidden]{display:none}.np-menu-title{font-weight:700;font-size:15px;margin-bottom:12px}#bubble-measure-buttons{display:grid;gap:7px}.np-tool{width:100%;text-align:left}#bubble-status{margin:12px 0;color:#b5d3dc;line-height:1.45}#bubble-annotations{position:absolute;inset:0;pointer-events:none;z-index:3}.np-dot{position:absolute;transform:translate(-50%,-50%);width:25px;height:25px;border:2px solid #fff;background:#19b8bb;color:#05222d;border-radius:50%;place-items:center;font:700 12px Arial;box-shadow:0 0 0 3px #002b3c88}#bubble-panel .bubble-station{width:100%}';style.textContent+='#bubble-overlay .np-top{position:fixed!important;top:16px!important;right:16px!important;left:auto!important;display:flex!important;gap:10px!important;z-index:2200!important;pointer-events:auto!important}#bubble-overlay .np-top #bubble-measure,#bubble-overlay .np-top #bubble-close{position:static!important;top:auto!important;right:auto!important;left:auto!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;visibility:visible!important;opacity:1!important;min-height:42px!important;white-space:nowrap!important;z-index:2201!important}#bubble-overlay .np-top #bubble-measure{border-color:#37d9d0!important;background:#164b55!important;color:#ecffff!important}#bubble-overlay .np-brand{top:18px!important;left:18px!important;max-width:calc(100vw - 440px)}@media(max-width:750px){#bubble-overlay .np-top{top:auto!important;bottom:18px!important;right:12px!important;left:12px!important;justify-content:center!important}#bubble-overlay .np-brand{max-width:none}#bubble-overlay #bubble-measure-menu{top:auto!important;bottom:72px!important;right:12px!important}}';document.head.appendChild(style);
+const panel=document.createElement('div');panel.id='bubble-panel';document.body.appendChild(panel);
+const bubbleHeader=document.createElement('div');bubbleHeader.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px';
+const bubbleTitle=document.createElement('strong');bubbleTitle.textContent='BubbleViews · carregando';bubbleHeader.appendChild(bubbleTitle);
+const bubbleToggle=document.createElement('button');bubbleToggle.className='bubble-toggle';bubbleToggle.textContent='−';bubbleToggle.title='Minimizar BubbleViews';bubbleToggle.onclick=()=>{const collapsed=panel.classList.toggle('collapsed');bubbleToggle.textContent=collapsed?'+':'−';bubbleToggle.title=collapsed?'Expandir BubbleViews':'Minimizar BubbleViews';};bubbleHeader.appendChild(bubbleToggle);panel.appendChild(bubbleHeader);
+const bubbleContent=document.createElement('div');bubbleContent.className='bubble-content';panel.appendChild(bubbleContent);
+const overlay=document.createElement('div');overlay.id='bubble-overlay';overlay.innerHTML='<div class="np-brand"><span class="np-logo">NP</span><span>PORTREE <b>NP</b><small>INSPEÇÃO PANORÂMICA</small></span></div><div class="np-top"><button id="bubble-measure" class="np-button">Ferramentas de medida</button><button id="bubble-close" class="np-button">Voltar à nuvem</button></div><div id="bubble-measure-menu" hidden><div class="np-menu-title">Ferramentas de medida</div><div id="bubble-measure-buttons"></div><div id="bubble-status" role="status">Escolha uma ferramenta para começar.</div><button id="bubble-clear" class="np-button">Limpar marcações</button></div><div id="bubble-annotations"></div>';document.body.appendChild(overlay);
+let panoRenderer,panoScene,panoCamera,panoMesh,dragging=false,lastX=0,lastY=0,longitude=0,latitude=0,activeMode=null,measurePoints=[],measureDots=[],measureLines=[],pointerStart=null,currentStation=null,measureXYZ=[],measurementLabel='';
+const measureMenu=document.getElementById('bubble-measure-menu'),annotations=document.getElementById('bubble-annotations');
+function clearAnnotations(){measurementLabel='';measureXYZ=[];measurePoints=[];annotations.replaceChildren();measureDots=[];measureLines=[];document.getElementById('bubble-status').textContent='Marcações removidas.';}
+function closePanorama(){overlay.style.display='none';measureMenu.hidden=true;activeMode=null;currentStation=null;clearAnnotations();if(panoRenderer){panoRenderer.dispose();panoRenderer.domElement.remove();panoRenderer=null;}if(panoMesh){panoMesh.geometry.dispose();if(panoMesh.material.map)panoMesh.material.map.dispose();panoMesh.material.dispose();panoMesh=null;}}
+document.getElementById('bubble-close').onclick=closePanorama;
+document.getElementById('bubble-measure').onclick=()=>{measureMenu.hidden=!measureMenu.hidden;};
+document.getElementById('bubble-clear').onclick=clearAnnotations;
+const measureModes=[
+ {label:'📏 Medir distância na BubbleView',key:'distance',count:2},
+ {label:'↔ Horizontal / vertical',key:'components',count:2},
+ {label:'∠ Ângulo entre direções',key:'angle',count:2},
+ {label:'▱ Área',key:'area',count:3},
+ {label:'⌖ Coordenadas XYZ',key:'coordinates',count:1},
+ {label:'✚ Marcar pontos',key:'point',count:Infinity}
+];
+for(const mode of measureModes){
+ const button=document.createElement('button');button.className='np-button np-tool';button.textContent=mode.label;
+ button.onclick=()=>{clearAnnotations();activeMode=mode;document.querySelectorAll('.np-tool').forEach(b=>b.classList.remove('np-active'));button.classList.add('np-active');document.getElementById('bubble-status').textContent=mode.key==='angle'?'Clique em duas direções na foto para medir o ângulo visual.':'Clique diretamente na fotografia 360°. A panorâmica permanecerá aberta. A distância em metros depende da associação à profundidade 3D, ainda em desenvolvimento.';measureMenu.hidden=true;};
+ document.getElementById('bubble-measure-buttons').appendChild(button);
+}
+function rayFromScreen(x,y){
+ const rect=panoRenderer.domElement.getBoundingClientRect();
+ const nx=(x-rect.left)/rect.width*2-1,ny=-(y-rect.top)/rect.height*2+1;
+ panoCamera.updateMatrixWorld();return new THREE.Vector3(nx,ny,0.5).unproject(panoCamera).sub(panoCamera.position).normalize();
+}
+async function addAnnotation(x,y){
+ if(!activeMode||!panoRenderer)return;
+ if(measurePoints.length>=activeMode.count)clearAnnotations();
+ const ray=rayFromScreen(x,y);measurePoints.push(ray);
+ const dot=document.createElement('div');dot.className='np-dot';dot.textContent=measurePoints.length;annotations.appendChild(dot);measureDots.push(dot);
+ updateAnnotations();
+ const status=document.getElementById('bubble-status');
+ if(activeMode.key!=='angle'&&activeMode.key!=='point'&&currentStation){
+  const selection=activeMode;
+  const index=measurePoints.length-1;
+  status.textContent='Consultando profundidade 3D...';
+  try{
+   const response=await fetch('/api/depth/'+token,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({station_id:currentStation.id,direction:[ray.x,ray.y,ray.z]})});
+   if(!response.ok)throw Error('Consulta de profundidade falhou ('+response.status+')');
+   const result=await response.json();
+   if(activeMode!==selection||measurePoints[index]!==ray)return;
+   if(result.status!=='provisional'){
+    status.textContent=result.message||'Profundidade indisponível para este clique.';
+    return;
+   }
+   measureXYZ[index]=result.xyz;
+   if(selection.key==='coordinates'){
+    status.textContent='XYZ provisório (unidade do E57): '+result.xyz.map(v=>v.toFixed(3)).join(', ')+' · alinhamento ainda não calibrado';
+   }else if(measureXYZ[0]&&measureXYZ[1]){
+    const a=measureXYZ[0],b=measureXYZ[1],dx=b[0]-a[0],dy=b[1]-a[1],dz=b[2]-a[2];
+    measurementLabel=Math.hypot(dx,dy,dz).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' m*';updateAnnotations();status.textContent='MEDIÇÃO PROVISÓRIA · 3D: '+Math.hypot(dx,dy,dz).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' m* | horizontal XY: '+Math.hypot(dx,dy).toFixed(3)+' | ΔZ: '+Math.abs(dz).toFixed(3)+' · *metros presumidos; confirmar unidade e calibração do E57';
+    measureMenu.hidden=false;
+   }else status.textContent='Ponto 3D provisório registrado. Selecione o próximo ponto.';
+  }catch(err){status.textContent='Falha na profundidade: '+err.message;}
+  return;
+ }
+
+ if(activeMode.key==='angle'&&measurePoints.length===2){const deg=measurePoints[0].angleTo(measurePoints[1])*180/Math.PI;status.textContent='Ângulo visual: '+deg.toFixed(2)+'°. Não é um ângulo entre superfícies 3D.';}
+ else if(activeMode.key==='point')status.textContent=measurePoints.length+' ponto(s) marcados. Sem profundidade associada.';
+ else if(activeMode.key==='distance'&&measurePoints.length===2){const angle=measurePoints[0].angleTo(measurePoints[1])*180/Math.PI;status.textContent='Dois pontos marcados na BubbleView. Separação angular: '+angle.toFixed(2)+'°. Distância em metros pendente da profundidade 3D.';measureMenu.hidden=false;}
+ else status.textContent=measurePoints.length+' ponto(s) selecionados na BubbleView. Distância em metros indisponível sem profundidade 3D validada.';
+}
+function updateAnnotations(){
+ if(!panoRenderer)return;
+ const rect=panoRenderer.domElement.getBoundingClientRect();
+ panoCamera.updateMatrixWorld();
+ const projectedPoints=[];
+ for(let i=0;i<measurePoints.length;i++){
+  const projected=measurePoints[i].clone().multiplyScalar(10).project(panoCamera);
+  const visible=projected.z<1&&projected.z>-1;
+  const x=(projected.x+1)/2*rect.width,y=(1-projected.y)/2*rect.height;
+  projectedPoints.push({x,y,visible});
+  measureDots[i].style.display=visible?'grid':'none';
+  measureDots[i].style.left=x+'px';
+  measureDots[i].style.top=y+'px';
+ }
+ const old=annotations.querySelector('.np-measure-graphic');
+ if(old)old.remove();
+ if(projectedPoints.length!==2||!activeMode||!['distance','components'].includes(activeMode.key))return;
+ const [a,b]=projectedPoints;
+ if(!a.visible||!b.visible)return;
+ const dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy);
+ if(length<1)return;
+ const line=document.createElement('div');
+ line.className='np-measure-graphic';
+ line.style.cssText='position:absolute;left:'+a.x+'px;top:'+a.y+'px;width:'+length+'px;height:0;border-top:3px solid #37e7e0;transform-origin:0 0;transform:rotate('+Math.atan2(dy,dx)+'rad);filter:drop-shadow(0 1px 3px #001b26);pointer-events:none';
+ annotations.appendChild(line);
+ if(measurementLabel){
+  const label=document.createElement('div');
+  label.className='np-measure-graphic';
+  label.textContent=measurementLabel+' · provisório';
+  label.style.cssText='position:absolute;left:'+((a.x+b.x)/2)+'px;top:'+((a.y+b.y)/2-18)+'px;transform:translate(-50%,-100%);background:#0b2638eb;color:#e6ffff;border:1px solid #37d9d0;border-radius:7px;padding:6px 10px;font:700 14px Arial;white-space:nowrap;box-shadow:0 3px 12px #0009;pointer-events:none';
+  annotations.appendChild(label);
+ }
+}
+function renderPano(){if(!panoRenderer)return;longitude=Math.max(-1e6,Math.min(1e6,longitude));latitude=Math.max(-85,Math.min(85,latitude));const phi=((90-latitude)*Math.PI/180),theta=(longitude*Math.PI/180);panoCamera.lookAt(new THREE.Vector3(Math.sin(phi)*Math.cos(theta),Math.cos(phi),Math.sin(phi)*Math.sin(theta)));panoRenderer.render(panoScene,panoCamera);updateAnnotations();}
+function openPanorama(station){
+ closePanorama();currentStation=station;overlay.style.display='block';
+ panoRenderer=new THREE.WebGLRenderer({antialias:true});panoRenderer.setPixelRatio(Math.min(devicePixelRatio,2));panoRenderer.setSize(innerWidth,innerHeight);overlay.appendChild(panoRenderer.domElement);
+ panoScene=new THREE.Scene();panoCamera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1100);
+ const geometry=new THREE.SphereGeometry(500,64,40);geometry.scale(-1,1,1);
+ const texture=new THREE.TextureLoader().load('/shared/'+token+'/'+station.image,renderPano,undefined,err=>{console.error(err);alert('Não foi possível carregar a panorâmica');});
+ panoMesh=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({map:texture}));panoScene.add(panoMesh);
+ longitude=0;latitude=0;activeMode=null;clearAnnotations();renderPano();
+}
+overlay.addEventListener('pointerdown',e=>{if(e.target!==panoRenderer?.domElement)return;dragging=true;pointerStart={x:e.clientX,y:e.clientY};lastX=e.clientX;lastY=e.clientY;overlay.setPointerCapture(e.pointerId)});
+overlay.addEventListener('pointerup',e=>{if(dragging&&pointerStart&&Math.hypot(e.clientX-pointerStart.x,e.clientY-pointerStart.y)<5&&activeMode)addAnnotation(e.clientX,e.clientY);dragging=false;pointerStart=null;});
+overlay.addEventListener('pointermove',e=>{if(!dragging)return;longitude+=(lastX-e.clientX)*0.15;latitude+=(e.clientY-lastY)*0.15;lastX=e.clientX;lastY=e.clientY;renderPano()});
+overlay.addEventListener('wheel',e=>{if(!panoCamera)return;e.preventDefault();panoCamera.fov=Math.max(30,Math.min(100,panoCamera.fov+Math.sign(e.deltaY)*4));panoCamera.updateProjectionMatrix();renderPano()},{passive:false});
+window.addEventListener('resize',()=>{if(!panoRenderer)return;panoCamera.aspect=innerWidth/innerHeight;panoCamera.updateProjectionMatrix();panoRenderer.setSize(innerWidth,innerHeight);renderPano()});
+fetch('/shared/'+token+'/stations.json').then(r=>{if(!r.ok)throw Error('Sem BubbleViews');return r.json()}).then(data=>{
+ bubbleContent.textContent='';bubbleTitle.textContent='BubbleViews ('+data.stations.length+')';const hint=document.createElement('div');hint.textContent='Clique em uma esfera azul na nuvem ou escolha uma estação abaixo.';hint.style.margin='8px 0';bubbleContent.appendChild(hint);
+ stationsReady=data.stations;
+ for(const station of data.stations){
+   const marker=new THREE.Mesh(new THREE.SphereGeometry(0.65,16,12),new THREE.MeshBasicMaterial({color:0x00d5ff,depthTest:false}));
+   marker.position.set(...station.position);marker.userData.station=station;marker.renderOrder=999;
+   bubbleMarkerGroup.add(marker);bubbleMarkers.push(marker);
+   const button=document.createElement('button');button.className='bubble-station';
+   button.textContent=station.name;
+   button.onclick=()=>{try{openPanorama(station)}catch(err){console.error('Erro ao abrir panorama',err);alert('Erro ao abrir panorama: '+err.message);}};
+   bubbleContent.appendChild(button);
+ }
+}).catch(err=>{console.error('Falha ao carregar BubbleViews',err);bubbleTitle.textContent='BubbleViews · erro';bubbleContent.textContent='Erro ao carregar estações: '+err.message;});
+</script></html>
